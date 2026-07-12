@@ -1,0 +1,995 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Shorts Predictor — Know Before You Post</title>
+  <meta name="description" content="AI-powered YouTube Shorts virality predictor. Upload your Short and get a percentile score + actionable feedback before you post." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet" />
+  <style>
+    /* ─── Reset & Base ──────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:        #050810;
+      --surface:   rgba(255,255,255,0.04);
+      --surface2:  rgba(255,255,255,0.07);
+      --border:    rgba(255,255,255,0.08);
+      --border2:   rgba(255,255,255,0.14);
+      --text:      #f1f5f9;
+      --muted:     #64748b;
+      --muted2:    #94a3b8;
+      --accent:    #818cf8;
+      --accent2:   #6366f1;
+      --green:     #34d399;
+      --orange:    #fb923c;
+      --red:       #f87171;
+      --radius:    16px;
+      --radius-sm: 10px;
+    }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      font-family: 'Inter', system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+
+    /* ─── Animated Background ───────────────────────────── */
+    .bg-orbs {
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      z-index: 0;
+      overflow: hidden;
+    }
+    .orb {
+      position: absolute;
+      border-radius: 50%;
+      filter: blur(120px);
+      opacity: 0.12;
+      animation: orb-drift 20s ease-in-out infinite alternate;
+    }
+    .orb-1 { width: 700px; height: 700px; background: #6366f1; top: -200px; left: -200px; animation-duration: 22s; }
+    .orb-2 { width: 500px; height: 500px; background: #8b5cf6; top: 40%; right: -150px; animation-duration: 18s; animation-delay: -8s; }
+    .orb-3 { width: 400px; height: 400px; background: #06b6d4; bottom: -100px; left: 30%; animation-duration: 25s; animation-delay: -12s; }
+
+    @keyframes orb-drift {
+      from { transform: translate(0, 0) scale(1); }
+      to   { transform: translate(40px, 30px) scale(1.08); }
+    }
+
+    /* ─── Layout ─────────────────────────────────────────── */
+    .page {
+      position: relative;
+      z-index: 1;
+      max-width: 780px;
+      margin: 0 auto;
+      padding: 2rem 1.5rem 6rem;
+    }
+
+    /* ─── Header ─────────────────────────────────────────── */
+    .header {
+      text-align: center;
+      padding: 4rem 0 3rem;
+    }
+    .logo-wrap {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.6rem;
+      margin-bottom: 1.5rem;
+    }
+    .logo-icon {
+      width: 44px; height: 44px;
+      background: linear-gradient(135deg, #6366f1, #8b5cf6);
+      border-radius: 12px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 1.3rem;
+      box-shadow: 0 0 30px rgba(99,102,241,0.4);
+    }
+    .logo-text {
+      font-size: 1.15rem;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      color: var(--text);
+    }
+    .header h1 {
+      font-size: clamp(2.2rem, 5vw, 3.4rem);
+      font-weight: 900;
+      letter-spacing: -0.04em;
+      line-height: 1.1;
+      background: linear-gradient(135deg, #f1f5f9 30%, #818cf8 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      margin-bottom: 1rem;
+    }
+    .header p {
+      color: var(--muted2);
+      font-size: 1.05rem;
+      font-weight: 400;
+      max-width: 480px;
+      margin: 0 auto;
+      line-height: 1.6;
+    }
+
+    /* ─── Card ───────────────────────────────────────────── */
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      padding: 2rem;
+      margin-bottom: 1.5rem;
+    }
+    .card-title {
+      font-size: 0.72rem;
+      font-weight: 700;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      margin-bottom: 1.2rem;
+    }
+
+    /* ─── Niche Selector ─────────────────────────────────── */
+    .niche-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 0.6rem;
+    }
+    .niche-btn {
+      background: var(--surface);
+      border: 1.5px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: 0.75rem 0.5rem;
+      cursor: pointer;
+      text-align: center;
+      transition: all 0.18s ease;
+      position: relative;
+      overflow: hidden;
+    }
+    .niche-btn:hover:not(.disabled) {
+      border-color: var(--border2);
+      background: var(--surface2);
+      transform: translateY(-1px);
+    }
+    .niche-btn.active {
+      border-color: var(--niche-color, var(--accent));
+      background: color-mix(in srgb, var(--niche-color, var(--accent)) 10%, transparent);
+      box-shadow: 0 0 20px color-mix(in srgb, var(--niche-color, var(--accent)) 20%, transparent);
+    }
+    .niche-btn.disabled {
+      opacity: 0.35;
+      cursor: not-allowed;
+    }
+    .niche-emoji { font-size: 1.5rem; display: block; margin-bottom: 0.3rem; }
+    .niche-label { font-size: 0.72rem; font-weight: 600; color: var(--muted2); }
+    .niche-btn.active .niche-label { color: var(--text); }
+    .niche-coming {
+      position: absolute;
+      top: 4px; right: 6px;
+      font-size: 0.55rem;
+      font-weight: 700;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    /* ─── Upload Zone ────────────────────────────────────── */
+    .upload-zone {
+      border: 2px dashed var(--border2);
+      border-radius: var(--radius);
+      padding: 2.5rem 1.5rem;
+      text-align: center;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      position: relative;
+      overflow: hidden;
+    }
+    .upload-zone:hover, .upload-zone.drag-over {
+      border-color: var(--accent);
+      background: rgba(99,102,241,0.05);
+    }
+    .upload-zone.has-file {
+      border-style: solid;
+      border-color: var(--green);
+      background: rgba(52,211,153,0.05);
+    }
+    .upload-zone input[type="file"] {
+      position: absolute; inset: 0;
+      opacity: 0; cursor: pointer; width: 100%; height: 100%;
+    }
+    .upload-icon {
+      font-size: 2.4rem;
+      margin-bottom: 0.75rem;
+      display: block;
+      transition: transform 0.2s;
+    }
+    .upload-zone:hover .upload-icon { transform: translateY(-3px); }
+    .upload-title {
+      font-weight: 700;
+      font-size: 1rem;
+      color: var(--text);
+      margin-bottom: 0.3rem;
+    }
+    .upload-sub {
+      font-size: 0.82rem;
+      color: var(--muted);
+    }
+    .upload-filename {
+      display: none;
+      margin-top: 0.8rem;
+      font-size: 0.82rem;
+      font-weight: 600;
+      color: var(--green);
+    }
+    .upload-zone.has-file .upload-filename { display: block; }
+    .upload-zone.has-file .upload-title { color: var(--muted2); font-weight: 400; }
+
+    /* ─── Form Fields ─────────────────────────────────────── */
+    .field-group {
+      display: grid;
+      gap: 1rem;
+      margin-bottom: 1rem;
+    }
+    .field-group.two-col { grid-template-columns: 1fr 1fr; }
+
+    .field label {
+      display: block;
+      font-size: 0.78rem;
+      font-weight: 600;
+      color: var(--muted2);
+      margin-bottom: 0.4rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }
+    .field input, .field textarea, .field select {
+      width: 100%;
+      background: rgba(255,255,255,0.05);
+      border: 1.5px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: 0.7rem 0.9rem;
+      color: var(--text);
+      font-family: 'Inter', sans-serif;
+      font-size: 0.9rem;
+      outline: none;
+      transition: border-color 0.15s, box-shadow 0.15s;
+      -webkit-appearance: none;
+    }
+    .field input::placeholder, .field textarea::placeholder { color: var(--muted); }
+    .field input:focus, .field textarea:focus, .field select:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px rgba(129,140,248,0.15);
+    }
+    .field textarea { resize: vertical; min-height: 72px; }
+    .field select { cursor: pointer; }
+    .field select option { background: #1e293b; }
+
+    /* Slider */
+    .slider-wrap { display: flex; align-items: center; gap: 0.8rem; }
+    .slider-val {
+      font-size: 0.85rem;
+      font-weight: 700;
+      color: var(--accent);
+      min-width: 2rem;
+      text-align: right;
+    }
+    input[type="range"] {
+      flex: 1;
+      -webkit-appearance: none;
+      height: 4px;
+      border-radius: 2px;
+      background: var(--border2);
+      outline: none;
+    }
+    input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 16px; height: 16px;
+      border-radius: 50%;
+      background: var(--accent);
+      cursor: pointer;
+      box-shadow: 0 0 10px rgba(129,140,248,0.5);
+      transition: transform 0.15s;
+    }
+    input[type="range"]::-webkit-slider-thumb:hover { transform: scale(1.2); }
+
+    /* ─── Submit Button ───────────────────────────────────── */
+    .submit-btn {
+      width: 100%;
+      padding: 1rem;
+      background: linear-gradient(135deg, #6366f1, #8b5cf6);
+      border: none;
+      border-radius: var(--radius-sm);
+      color: #fff;
+      font-family: 'Inter', sans-serif;
+      font-size: 1rem;
+      font-weight: 700;
+      letter-spacing: 0.01em;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      box-shadow: 0 4px 24px rgba(99,102,241,0.35);
+      position: relative;
+      overflow: hidden;
+    }
+    .submit-btn::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(135deg, rgba(255,255,255,0.1), transparent);
+      opacity: 0;
+      transition: opacity 0.2s;
+    }
+    .submit-btn:hover:not(:disabled)::before { opacity: 1; }
+    .submit-btn:hover:not(:disabled) {
+      transform: translateY(-2px);
+      box-shadow: 0 8px 32px rgba(99,102,241,0.5);
+    }
+    .submit-btn:active:not(:disabled) { transform: translateY(0); }
+    .submit-btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+      transform: none;
+      box-shadow: none;
+    }
+    .submit-btn .btn-spinner {
+      display: none;
+      width: 18px; height: 18px;
+      border: 2.5px solid rgba(255,255,255,0.3);
+      border-top-color: #fff;
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+      margin: 0 auto;
+    }
+    .submit-btn.loading .btn-text { display: none; }
+    .submit-btn.loading .btn-spinner { display: block; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ─── Loading State ───────────────────────────────────── */
+    .loading-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(5,8,16,0.85);
+      backdrop-filter: blur(8px);
+      z-index: 100;
+      align-items: center;
+      justify-content: center;
+      flex-direction: column;
+      gap: 1.5rem;
+    }
+    .loading-overlay.active { display: flex; }
+    .loading-ring {
+      width: 64px; height: 64px;
+      border: 3px solid rgba(99,102,241,0.2);
+      border-top-color: #6366f1;
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+    }
+    .loading-text { color: var(--muted2); font-size: 0.95rem; font-weight: 500; }
+    .loading-steps { color: var(--muted); font-size: 0.8rem; text-align: center; }
+
+    /* ─── Results ─────────────────────────────────────────── */
+    #results { display: none; }
+    #results.visible { display: block; animation: fade-up 0.5s ease; }
+
+    @keyframes fade-up {
+      from { opacity: 0; transform: translateY(20px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    /* Score Card */
+    .score-card {
+      text-align: center;
+      padding: 3rem 2rem;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      position: relative;
+      overflow: hidden;
+    }
+    .score-card::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: radial-gradient(ellipse at 50% 0%, var(--score-glow, rgba(99,102,241,0.15)) 0%, transparent 70%);
+      pointer-events: none;
+    }
+    .score-niche-tag {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+      padding: 0.3rem 0.8rem;
+      border-radius: 99px;
+      font-size: 0.72rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.07em;
+      margin-bottom: 1.5rem;
+      border: 1px solid currentColor;
+    }
+    .score-ring-wrap {
+      position: relative;
+      width: 180px;
+      height: 180px;
+      margin: 0 auto 1.5rem;
+    }
+    .score-ring {
+      width: 100%;
+      height: 100%;
+      transform: rotate(-90deg);
+    }
+    .score-ring-bg { fill: none; stroke: rgba(255,255,255,0.06); stroke-width: 10; }
+    .score-ring-fill {
+      fill: none;
+      stroke-width: 10;
+      stroke-linecap: round;
+      stroke-dasharray: 502;
+      stroke-dashoffset: 502;
+      transition: stroke-dashoffset 1.5s cubic-bezier(0.25, 1, 0.5, 1);
+    }
+    .score-num-wrap {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+    }
+    .score-num {
+      font-size: 3.8rem;
+      font-weight: 900;
+      letter-spacing: -0.05em;
+      line-height: 1;
+    }
+    .score-num sup {
+      font-size: 1.5rem;
+      font-weight: 700;
+      letter-spacing: 0;
+    }
+    .score-verdict {
+      font-size: 0.7rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+      opacity: 0.5;
+      margin-top: 0.2rem;
+    }
+    .score-label {
+      font-size: 0.82rem;
+      color: var(--muted);
+      font-weight: 400;
+    }
+
+    /* Hook Frame */
+    .hook-frame-wrap {
+      margin-top: 1.5rem;
+      text-align: left;
+    }
+    .hook-img {
+      width: 160px;
+      border-radius: 10px;
+      border: 1px solid var(--border2);
+      display: block;
+    }
+
+    /* Recommendations */
+    .rec-list { display: flex; flex-direction: column; gap: 0.6rem; }
+
+    .rec-card {
+      background: rgba(255,255,255,0.03);
+      border: 1px solid var(--border);
+      border-left: 3px solid var(--rec-color, var(--red));
+      border-radius: var(--radius-sm);
+      padding: 0.9rem 1.1rem;
+      animation: fade-up 0.4s ease both;
+    }
+    .rec-tag {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.3rem;
+      font-size: 0.65rem;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: var(--rec-color, var(--red));
+      margin-bottom: 0.4rem;
+    }
+    .rec-tag::before {
+      content: '';
+      width: 5px; height: 5px;
+      border-radius: 50%;
+      background: currentColor;
+      display: inline-block;
+    }
+    .rec-msg {
+      font-size: 0.875rem;
+      color: #cbd5e1;
+      line-height: 1.55;
+    }
+    .rec-bench {
+      font-size: 0.75rem;
+      color: var(--muted);
+      margin-top: 0.35rem;
+      font-style: italic;
+    }
+
+    /* Success state */
+    .all-good {
+      padding: 1.5rem;
+      text-align: center;
+      color: var(--green);
+      font-size: 0.95rem;
+      font-weight: 600;
+      border: 1px solid rgba(52,211,153,0.25);
+      border-radius: var(--radius-sm);
+      background: rgba(52,211,153,0.05);
+    }
+
+    /* Error */
+    .error-box {
+      padding: 1rem 1.2rem;
+      border-radius: var(--radius-sm);
+      background: rgba(248,113,113,0.07);
+      border: 1px solid rgba(248,113,113,0.2);
+      color: var(--red);
+      font-size: 0.875rem;
+      line-height: 1.5;
+    }
+
+    /* ─── Divider ─────────────────────────────────────────── */
+    .section-head {
+      font-size: 0.7rem;
+      font-weight: 700;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      margin-bottom: 0.9rem;
+    }
+
+    /* ─── Footer ─────────────────────────────────────────── */
+    footer {
+      text-align: center;
+      padding: 3rem 0 1rem;
+      color: var(--muted);
+      font-size: 0.78rem;
+    }
+
+    /* ─── Responsive ─────────────────────────────────────── */
+    @media (max-width: 560px) {
+      .niche-grid { grid-template-columns: repeat(2, 1fr); }
+      .field-group.two-col { grid-template-columns: 1fr; }
+      .header h1 { font-size: 2rem; }
+      .page { padding: 1.5rem 1rem 5rem; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- Animated background orbs -->
+<div class="bg-orbs">
+  <div class="orb orb-1"></div>
+  <div class="orb orb-2"></div>
+  <div class="orb orb-3"></div>
+</div>
+
+<!-- Loading overlay -->
+<div class="loading-overlay" id="loadingOverlay">
+  <div class="loading-ring"></div>
+  <div>
+    <div class="loading-text" id="loadingText">Analysing your Short…</div>
+    <div class="loading-steps" id="loadingStep">Extracting visual features</div>
+  </div>
+</div>
+
+<div class="page">
+
+  <!-- Header -->
+  <header class="header">
+    <div class="logo-wrap">
+      <div class="logo-icon">🎬</div>
+      <span class="logo-text">Shorts Predictor</span>
+    </div>
+    <h1>Know Before<br />You Post</h1>
+    <p>Upload your Short and get a data-backed virality score plus specific, actionable fixes — in under a minute.</p>
+  </header>
+
+  <!-- Form -->
+  <form id="predictForm" autocomplete="off">
+
+    <!-- 1. Niche -->
+    <div class="card">
+      <div class="card-title">1 · Select your niche</div>
+      <div class="niche-grid" id="nicheGrid">
+        <!-- Populated by JS -->
+      </div>
+    </div>
+    <input type="hidden" id="selectedNiche" name="niche" value="" />
+
+    <!-- 2. Upload -->
+    <div class="card">
+      <div class="card-title">2 · Upload your Short</div>
+      <div class="upload-zone" id="uploadZone">
+        <input type="file" id="videoFile" name="video" accept="video/mp4,video/mov,video/quicktime" />
+        <span class="upload-icon">📱</span>
+        <div class="upload-title">Drop your Short here</div>
+        <div class="upload-sub">MP4 or MOV · max 500 MB</div>
+        <div class="upload-filename" id="uploadFilename"></div>
+      </div>
+    </div>
+
+    <!-- 3. Metadata -->
+    <div class="card">
+      <div class="card-title">3 · Video details</div>
+
+      <div class="field-group" style="margin-bottom:1rem">
+        <div class="field">
+          <label>Video title</label>
+          <input type="text" id="titleInput" name="title" placeholder="Your video title…" />
+        </div>
+      </div>
+
+      <div class="field-group two-col" style="margin-bottom:1rem">
+        <div class="field">
+          <label>Tags (comma-separated)</label>
+          <input type="text" id="tagsInput" name="tags" placeholder="fitness, gym, workout" />
+        </div>
+        <div class="field">
+          <label>Channel handle (optional)</label>
+          <input type="text" id="channelInput" name="channel" placeholder="@YourChannel" />
+        </div>
+      </div>
+
+      <div class="field" style="margin-bottom:1rem">
+        <label>Description (optional)</label>
+        <textarea id="descInput" name="desc" placeholder="Your caption / description…"></textarea>
+      </div>
+
+      <div class="field-group two-col">
+        <div class="field">
+          <label>Post time (hour)</label>
+          <div class="slider-wrap">
+            <input type="range" id="hourSlider" name="hour" min="0" max="23" value="18" />
+            <span class="slider-val" id="hourVal">18:00</span>
+          </div>
+        </div>
+        <div class="field">
+          <label>Post day</label>
+          <select id="weekdaySelect" name="weekday">
+            <option value="0">Monday</option>
+            <option value="1">Tuesday</option>
+            <option value="2">Wednesday</option>
+            <option value="3">Thursday</option>
+            <option value="4">Friday</option>
+            <option value="5">Saturday</option>
+            <option value="6">Sunday</option>
+          </select>
+        </div>
+      </div>
+    </div>
+
+    <!-- Submit -->
+    <button type="submit" class="submit-btn" id="submitBtn" disabled>
+      <span class="btn-text">Analyse my Short →</span>
+      <div class="btn-spinner"></div>
+    </button>
+
+  </form>
+
+  <!-- Results -->
+  <div id="results">
+
+    <!-- Score -->
+    <div class="score-card" id="scoreCard">
+      <div id="nicheTagResult" class="score-niche-tag"></div>
+
+      <div class="score-ring-wrap">
+        <svg class="score-ring" viewBox="0 0 180 180">
+          <circle class="score-ring-bg" cx="90" cy="90" r="80" />
+          <circle class="score-ring-fill" id="scoreRingFill" cx="90" cy="90" r="80" />
+        </svg>
+        <div class="score-num-wrap">
+          <div class="score-num" id="scoreNum" style="color:var(--accent)">
+            <span id="scoreDigits">—</span><sup>th</sup>
+          </div>
+          <div class="score-verdict" id="scoreVerdict"></div>
+        </div>
+      </div>
+
+      <div class="score-label" id="scoreLabel">Percentile vs videos in your niche</div>
+
+      <!-- Hook Frame -->
+      <div class="hook-frame-wrap" id="hookFrameWrap" style="display:none">
+        <div class="section-head" style="margin-top:1.5rem">Hook frame · 0.5s</div>
+        <img class="hook-img" id="hookImg" src="" alt="Hook frame" />
+      </div>
+    </div>
+
+    <!-- Recommendations -->
+    <div class="card" style="margin-top:1.5rem" id="recsCard">
+      <div class="section-head">Issues &amp; Fixes</div>
+      <div class="rec-list" id="recList"></div>
+    </div>
+
+  </div><!-- /results -->
+
+  <footer>Built with ♥ · Shorts Predictor</footer>
+</div>
+
+<script>
+  const API = '';  // same origin — FastAPI serves this HTML
+
+  // ── State ──────────────────────────────────────────────
+  let selectedNiche = null;
+  let availableNiches = [];
+  let selectedVideoFile = null;
+
+  // ── Load niches ────────────────────────────────────────
+  async function loadNiches() {
+    try {
+      const res = await fetch(`${API}/api/niches`);
+      availableNiches = await res.json();
+      renderNiches();
+    } catch (e) {
+      document.getElementById('nicheGrid').innerHTML =
+        '<p style="color:var(--red);font-size:.85rem">Could not load niches — is the API running?</p>';
+    }
+  }
+
+  function renderNiches() {
+    const grid = document.getElementById('nicheGrid');
+    grid.innerHTML = '';
+    availableNiches.forEach(n => {
+      const btn = document.createElement('div');
+      btn.className = 'niche-btn' + (n.ready ? '' : ' disabled');
+      btn.style.setProperty('--niche-color', n.color);
+      btn.dataset.id = n.id;
+      btn.innerHTML = `
+        <span class="niche-emoji">${n.emoji}</span>
+        <span class="niche-label">${n.label}</span>
+        ${!n.ready ? '<span class="niche-coming">Soon</span>' : ''}
+      `;
+      if (n.ready) {
+        btn.addEventListener('click', () => selectNiche(n));
+        // Auto-select first ready niche
+        if (!selectedNiche) selectNiche(n);
+      }
+      grid.appendChild(btn);
+    });
+  }
+
+  function selectNiche(n) {
+    selectedNiche = n;
+    document.getElementById('selectedNiche').value = n.id;
+    document.querySelectorAll('.niche-btn').forEach(b => b.classList.remove('active'));
+    const btn = document.querySelector(`.niche-btn[data-id="${n.id}"]`);
+    if (btn) btn.classList.add('active');
+    updateSubmitState();
+  }
+
+  // ── File upload ────────────────────────────────────────
+  const uploadZone = document.getElementById('uploadZone');
+  const videoFile  = document.getElementById('videoFile');
+
+  videoFile.addEventListener('change', () => {
+    if (videoFile.files[0]) {
+      selectedVideoFile = videoFile.files[0];
+      uploadZone.classList.add('has-file');
+      document.getElementById('uploadFilename').textContent = '✓ ' + selectedVideoFile.name;
+      updateSubmitState();
+    }
+  });
+
+  uploadZone.addEventListener('dragover', e => { e.preventDefault(); uploadZone.classList.add('drag-over'); });
+  uploadZone.addEventListener('dragleave', () => uploadZone.classList.remove('drag-over'));
+  uploadZone.addEventListener('drop', e => {
+    e.preventDefault();
+    uploadZone.classList.remove('drag-over');
+    const file = e.dataTransfer.files[0];
+    if (file && (file.type.startsWith('video/') || file.name.match(/\.(mp4|mov)$/i))) {
+      selectedVideoFile = file;
+      uploadZone.classList.add('has-file');
+      document.getElementById('uploadFilename').textContent = '✓ ' + file.name;
+      updateSubmitState();
+    }
+  });
+
+  // ── Slider ─────────────────────────────────────────────
+  const hourSlider = document.getElementById('hourSlider');
+  const hourVal    = document.getElementById('hourVal');
+  hourSlider.addEventListener('input', () => {
+    hourVal.textContent = String(hourSlider.value).padStart(2,'0') + ':00';
+  });
+
+  // Set today's weekday as default
+  document.getElementById('weekdaySelect').value = new Date().getDay() === 0 ? 6 : new Date().getDay() - 1;
+
+  // ── Submit state ───────────────────────────────────────
+  function updateSubmitState() {
+    const btn = document.getElementById('submitBtn');
+    btn.disabled = !(selectedNiche && selectedVideoFile);
+  }
+
+  // ── Loading steps animation ────────────────────────────
+  const STEPS = [
+    'Extracting visual features…',
+    'Analysing audio…',
+    'Running CLIP embeddings…',
+    'Scoring against niche benchmarks…',
+    'Generating recommendations…',
+  ];
+  let stepTimer = null;
+  function startLoadingSteps() {
+    let i = 0;
+    document.getElementById('loadingStep').textContent = STEPS[0];
+    stepTimer = setInterval(() => {
+      i = (i + 1) % STEPS.length;
+      document.getElementById('loadingStep').textContent = STEPS[i];
+    }, 5000);
+  }
+  function stopLoadingSteps() {
+    clearInterval(stepTimer);
+  }
+
+  // ── Animate score ring ─────────────────────────────────
+  function animateScore(pct, color) {
+    const ring   = document.getElementById('scoreRingFill');
+    const numEl  = document.getElementById('scoreDigits');
+    const circ   = 2 * Math.PI * 80; // r=80
+    ring.style.stroke = color;
+    ring.style.strokeDashoffset = circ;
+
+    // Animate digits
+    let current = 0;
+    const target = pct;
+    const duration = 1400;
+    const start = performance.now();
+    function tick(now) {
+      const t = Math.min((now - start) / duration, 1);
+      const ease = 1 - Math.pow(1 - t, 3);
+      current = Math.round(ease * target);
+      numEl.textContent = current;
+      const offset = circ - (circ * (current / 100));
+      ring.style.strokeDashoffset = offset;
+      if (t < 1) requestAnimationFrame(tick);
+    }
+    requestAnimationFrame(tick);
+  }
+
+  // ── Main form submit ───────────────────────────────────
+  document.getElementById('predictForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+
+    // Show loading
+    const overlay = document.getElementById('loadingOverlay');
+    overlay.classList.add('active');
+    document.getElementById('submitBtn').classList.add('loading');
+    document.getElementById('submitBtn').disabled = true;
+    document.getElementById('results').classList.remove('visible');
+    startLoadingSteps();
+
+    const fd = new FormData();
+    fd.append('video',   selectedVideoFile);
+    fd.append('niche',   selectedNiche.id);
+    fd.append('title',   document.getElementById('titleInput').value);
+    fd.append('tags',    document.getElementById('tagsInput').value);
+    fd.append('desc',    document.getElementById('descInput').value);
+    fd.append('hour',    hourSlider.value);
+    fd.append('weekday', document.getElementById('weekdaySelect').value);
+    fd.append('channel', document.getElementById('channelInput').value);
+
+    try {
+      const res  = await fetch(`${API}/api/predict`, { method: 'POST', body: fd });
+      const data = await res.json();
+
+      stopLoadingSteps();
+      overlay.classList.remove('active');
+      document.getElementById('submitBtn').classList.remove('loading');
+      document.getElementById('submitBtn').disabled = false;
+
+      if (!res.ok || data.error) {
+        let errMsg = 'Unknown error';
+        if (data.detail) {
+          if (Array.isArray(data.detail)) {
+            errMsg = data.detail.map(d => `${d.loc.join('.')}: ${d.msg}`).join(', ');
+          } else {
+            errMsg = typeof data.detail === 'string' ? data.detail : JSON.stringify(data.detail);
+          }
+        } else if (data.error) {
+          errMsg = data.error;
+        }
+        showError(errMsg);
+        return;
+      }
+
+      renderResults(data);
+
+    } catch (err) {
+      stopLoadingSteps();
+      overlay.classList.remove('active');
+      document.getElementById('submitBtn').classList.remove('loading');
+      document.getElementById('submitBtn').disabled = false;
+      showError('Could not reach the API. Make sure uvicorn is running.');
+    }
+  });
+
+  // ── Render results ─────────────────────────────────────
+  function renderResults(data) {
+    const pct    = data.percentile ?? 0;
+    const color  = pct >= 65 ? 'var(--green)' : pct >= 40 ? 'var(--orange)' : 'var(--red)';
+    const verdict = pct >= 65 ? 'Strong' : pct >= 40 ? 'Average' : 'Weak';
+
+    // Score card glow
+    document.getElementById('scoreCard').style.setProperty('--score-glow',
+      pct >= 65 ? 'rgba(52,211,153,0.18)' : pct >= 40 ? 'rgba(251,146,60,0.18)' : 'rgba(248,113,113,0.18)');
+
+    // Niche tag
+    const tag = document.getElementById('nicheTagResult');
+    tag.textContent = `${data.niche_emoji}  ${data.niche_label}`;
+    tag.style.color       = data.niche_color;
+    tag.style.borderColor = data.niche_color;
+    tag.style.background  = `${data.niche_color}18`;
+
+    // Score number style
+    document.getElementById('scoreNum').style.color   = color;
+    document.getElementById('scoreVerdict').textContent = verdict;
+    document.getElementById('scoreVerdict').style.color = color;
+
+    animateScore(pct, color);
+
+    // Hook frame
+    if (data.hook_frame) {
+      document.getElementById('hookImg').src = `data:image/jpeg;base64,${data.hook_frame}`;
+      document.getElementById('hookFrameWrap').style.display = 'block';
+    } else {
+      document.getElementById('hookFrameWrap').style.display = 'none';
+    }
+
+    // Recommendations
+    const recList = document.getElementById('recList');
+    recList.innerHTML = '';
+    if (data.recommendations && data.recommendations.length > 0) {
+      data.recommendations.forEach((rec, i) => {
+        const recColor = rec.type === 'check' ? 'var(--red)' : 'var(--orange)';
+        const card = document.createElement('div');
+        card.className = 'rec-card';
+        card.style.setProperty('--rec-color', recColor);
+        card.style.animationDelay = `${i * 0.07}s`;
+        card.innerHTML = `
+          <div class="rec-tag">${rec.label || 'Issue'}</div>
+          <div class="rec-msg">${rec.message || ''}</div>
+          ${rec.benchmark ? `<div class="rec-bench">${rec.benchmark}</div>` : ''}
+        `;
+        recList.appendChild(card);
+      });
+      document.getElementById('recsCard').style.display = '';
+    } else {
+      recList.innerHTML = '<div class="all-good">✓ No major issues — your video looks solid!</div>';
+    }
+
+    // Show results
+    const resultsEl = document.getElementById('results');
+    resultsEl.classList.add('visible');
+    setTimeout(() => resultsEl.scrollIntoView({ behavior: 'smooth', block: 'start' }), 100);
+  }
+
+  function showError(msg) {
+    const resultsEl = document.getElementById('results');
+    document.getElementById('scoreCard').innerHTML = `<div class="error-box"><strong>Error:</strong> ${msg}</div>`;
+    document.getElementById('recsCard').style.display = 'none';
+    resultsEl.classList.add('visible');
+    resultsEl.scrollIntoView({ behavior: 'smooth' });
+  }
+
+  // ── Init ───────────────────────────────────────────────
+  loadNiches();
+  // Set default weekday
+  const d = new Date();
+  document.getElementById('weekdaySelect').value = d.getDay() === 0 ? 6 : d.getDay() - 1;
+</script>
+</body>
+</html>

@@ -1,0 +1,48 @@
+# Core data & ML
+numpy
+pandas
+scipy
+scikit-learn
+xgboost
+lightgbm
+optuna
+joblib
+shap
+
+# Deep learning & embeddings
+# For CUDA, install torch/torchvision/torchaudio from the PyTorch CUDA wheel index.
+torch
+torchvision
+torchaudio
+open-clip-torch
+sentence-transformers
+openai-whisper
+packaging
+
+# Audio
+librosa
+soundfile
+resampy
+torchvggish
+
+# Video / vision
+opencv-python
+
+# YouTube data
+yt-dlp
+google-api-python-client
+
+# Environment & utils
+python-dotenv
+tqdm
+matplotlib
+Pillow
+
+# Streamlit UI
+streamlit
+
+# LLM
+groq
+
+# VGGish (PyTorch port — install separately after pip install above)
+# torchvggish
