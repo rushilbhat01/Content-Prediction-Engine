@@ -70,14 +70,10 @@ sample_df = pd.DataFrame([[feature_dict.get(f, stats.get(f, 0)) for f in feats]]
 cont_present = [f for f in cont_cols if f in sample_df.columns]
 bin_present  = [f for f in bin_cols  if f in sample_df.columns]
 if cont_present:
-    if not hasattr(imp_cont, "_fill_dtype") and hasattr(imp_cont, "statistics_"):
-        imp_cont._fill_dtype = imp_cont.statistics_.dtype
     imputed = imp_cont.transform(sample_df[cont_present])
     for j, col in enumerate(cont_present):
         sample_df[col] = imputed[0][j]
 if bin_present:
-    if not hasattr(imp_bin, "_fill_dtype") and hasattr(imp_bin, "statistics_"):
-        imp_bin._fill_dtype = imp_bin.statistics_.dtype
     imputed = imp_bin.transform(sample_df[bin_present])
     for j, col in enumerate(bin_present):
         sample_df[col] = imputed[0][j]

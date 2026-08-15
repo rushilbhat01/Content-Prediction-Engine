@@ -1,8 +1,3 @@
-import sys
-try:
-    sys.stdout.reconfigure(encoding="utf-8")
-except Exception:
-    pass
 import os
 import joblib
 import numpy as np
@@ -42,7 +37,7 @@ meta = pd.read_csv("data/metadata_clean.csv")
 
 visual_path = Path("data/features_visual.csv")
 if visual_path.exists():
-    visual = pd.read_csv(visual_path).drop_duplicates(subset="video_id")
+    visual = pd.read_csv(visual_path)
     meta   = meta.merge(visual, on="video_id", how="left")
     print(f"Visual features:    {visual.shape[1]-1} cols")
 else:
@@ -50,7 +45,7 @@ else:
 
 audio_path = Path("data/features_audio.csv")
 if audio_path.exists():
-    audio = pd.read_csv(audio_path).drop_duplicates(subset="video_id")
+    audio = pd.read_csv(audio_path)
     meta  = meta.merge(audio, on="video_id", how="left")
     print(f"Audio features:     {audio.shape[1]-1} cols")
 else:
@@ -59,26 +54,18 @@ else:
 emb_path       = Path("data/features_embeddings.csv")
 has_embeddings = emb_path.exists()
 if has_embeddings:
-    emb = pd.read_csv(emb_path).drop_duplicates(subset="video_id")
+    emb = pd.read_csv(emb_path)
     print(f"Embedding features: {emb.shape[1]-1} cols")
 else:
     print("No embedding features found — run extract_embeddings.py first")
 
 trending_path = Path("data/features_trending_audio.csv")
 if trending_path.exists():
-    trending_df = pd.read_csv(trending_path).drop_duplicates(subset="video_id")
+    trending_df = pd.read_csv(trending_path)
     meta = meta.merge(trending_df, on="video_id", how="left")
     print(f"Trending audio scores: {len(trending_df)} entries")
 else:
-    print("No trending audio scores -- run build_trending_audio_db.py then extract_trending_audio_scores.py")
-
-hook_path = Path("data/hook_features.csv")
-if hook_path.exists():
-    hook_df = pd.read_csv(hook_path).drop_duplicates(subset="video_id")
-    meta = meta.merge(hook_df, on="video_id", how="left")
-    print(f"Hook features:        {hook_df.shape[1]-1} cols ({len(hook_df)} videos)")
-else:
-    print("No hook features yet  -- run: python run_hook_extraction.py")
+    print("No trending audio scores — run build_trending_audio_db.py then extract_trending_audio_scores.py")
 
 # ── Filter to niche ───────────────────────────────────────
 df = meta[meta["niche"] == NICHE].copy()
@@ -117,8 +104,10 @@ if NICHE in NICHE_KEYWORDS:
 # Prevents dominant channels from overfitting model to their style.
 CHANNEL_CAP = 10
 before = len(df)
-df = df.sample(frac=1, random_state=42).groupby("channel_id").head(CHANNEL_CAP).reset_index(drop=True)
-print(f"Channel cap ({CHANNEL_CAP}/channel): {before} -> {len(df)} videos")
+df = df.groupby("channel_id", group_keys=False).apply(
+    lambda g: g.sample(min(len(g), CHANNEL_CAP), random_state=42)
+).reset_index(drop=True)
+print(f"Channel cap ({CHANNEL_CAP}/channel): {before} → {len(df)} videos")
 
 if len(df) < 50:
     print("ERROR: Need at least 50 videos.")
@@ -126,66 +115,23 @@ if len(df) < 50:
 
 # ── Recompute targets ─────────────────────────────────────
 df["views"]             = pd.to_numeric(df["views"],             errors='coerce')
-df["likes"]             = pd.to_numeric(df.get("likes",  0),    errors='coerce').fillna(0).clip(lower=0)
-df["comments"]          = pd.to_numeric(df.get("comments", 0), errors='coerce').fillna(0).clip(lower=0)
 df["subscriber_count"]  = pd.to_numeric(df["subscriber_count"],  errors='coerce').clip(lower=1)
 df["video_age_days"]    = pd.to_numeric(df["video_age_days"],    errors='coerce').clip(lower=1)
 df["channel_avg_views"] = pd.to_numeric(df["channel_avg_views"], errors='coerce').clip(lower=1)
 
-# ── PCA composite virality target ────────────────────────
-# Three engagement signals, each measured relative to the channel's own baseline.
-# PCA finds the data-driven linear combo that captures the most variance across
-# all three — no hand-picked weights.
-from sklearn.preprocessing import StandardScaler
-
-df["like_view_ratio"]    = df["likes"]    / df["views"].clip(lower=1)
-df["comment_view_ratio"] = df["comments"] / df["views"].clip(lower=1)
-
-# Channel-level baselines (median per channel, Winsorised at 5/95 pct)
-chan_like_avg    = df.groupby("channel_id")["like_view_ratio"].transform("median").clip(
-    df["like_view_ratio"].quantile(0.05), df["like_view_ratio"].quantile(0.95)
-).clip(lower=1e-6)
-chan_comment_avg = df.groupby("channel_id")["comment_view_ratio"].transform("median").clip(
-    df["comment_view_ratio"].quantile(0.05), df["comment_view_ratio"].quantile(0.95)
-).clip(lower=1e-6)
-
-views_beat   = np.log1p(df["views"])             - np.log1p(df["channel_avg_views"])
-likes_beat   = np.log1p(df["like_view_ratio"])   - np.log1p(chan_like_avg)
-comments_beat = np.log1p(df["comment_view_ratio"]) - np.log1p(chan_comment_avg)
-
-signals = pd.DataFrame({
-    "views_beat":    views_beat,
-    "likes_beat":    likes_beat,
-    "comments_beat": comments_beat,
-}).dropna()
-
-_pca = PCA(n_components=1)
-_scaled = StandardScaler().fit_transform(signals)
-_pc1 = _pca.fit_transform(_scaled).flatten()
-pc1_weights = _pca.components_[0]  # [w_views, w_likes, w_comments]
-
-print(f"\nPCA virality target — PC1 explains {_pca.explained_variance_ratio_[0]*100:.1f}% of variance")
-print(f"  weights: views={pc1_weights[0]:.3f}  likes={pc1_weights[1]:.3f}  comments={pc1_weights[2]:.3f}")
-
-df["normalised_score"] = np.nan
-df.loc[signals.index, "normalised_score"] = _pc1
+# Target: how much did this video outperform the channel's average?
+# log(views / channel_avg_views) — positive = beat average, negative = below average.
+# Cleaner than views/subs*age because it's directly comparable across channel sizes.
+df["normalised_score"] = np.log1p(df["views"]) - np.log1p(df["channel_avg_views"])
 
 # Channel context features — knowable at upload time
 df["log1p_subscriber_count"]  = np.log1p(df["subscriber_count"])
 df["log1p_channel_avg_views"] = np.log1p(df["channel_avg_views"])
 
-# Channel-level engagement quality (also knowable at upload time via API)
-df["channel_avg_like_rate"]    = df.groupby("channel_id")["like_view_ratio"].transform("median").fillna(0)
-df["channel_avg_comment_rate"] = df.groupby("channel_id")["comment_view_ratio"].transform("median").fillna(0)
-df["log1p_chan_like_rate"]      = np.log1p(df["channel_avg_like_rate"])
-df["log1p_chan_comment_rate"]   = np.log1p(df["channel_avg_comment_rate"])
-
 # ── Hand-crafted feature groups ───────────────────────────
-# Post timing features (posted_hour, posted_weekday, posted_on_weekend,
-# posted_prime_time) deliberately excluded — Shorts distribution is
-# algorithm-driven, not recency-driven. These were spurious correlates
-# of creator professionalism, not causal levers.
 METADATA_FEATURES = [
+    "posted_hour", "posted_weekday",
+    "posted_on_weekend", "posted_prime_time",
     "duration_seconds",
     "title_length", "title_has_number",
     "title_has_emoji",
@@ -193,8 +139,6 @@ METADATA_FEATURES = [
     "desc_length",
     "log1p_subscriber_count",
     "log1p_channel_avg_views",
-    "log1p_chan_like_rate",      # channel engagement quality — knowable at upload
-    "log1p_chan_comment_rate",
 ]
 
 VISUAL_FEATURES = [
@@ -232,46 +176,12 @@ TEMPORAL_FEATURES = [
     "temporal_acceleration", "temporal_high_motion_ratio",
 ]
 
-# Hook features — from extract_hook_features.py / run_hook_extraction.py
-# Text overlay (OCR): what text is visible in the first 3 frames
-# Audio hook type: speech / music / both / silent
-# Whisper speech: what is said and how, in the first 3 seconds
-HOOK_FEATURES = [
-    # Text overlay
-    "hook_has_text_overlay",
-    "hook_text_char_count",
-    "hook_text_has_question",
-    "hook_text_has_number",
-    "hook_text_has_exclaim",
-    # Audio hook type
-    "hook_has_speech",
-    "hook_has_bg_music",
-    "hook_speech_and_music",
-    "hook_silence_ratio_3s",
-    "hook_audio_energy_3s",
-    "hook_music_dominance",
-    # Whisper hook speech
-    "hook_speech_word_count",
-    "hook_speech_words_per_s",
-    "hook_speech_is_question",
-    "hook_speech_has_number",
-    "hook_speech_has_exclaim",
-    "hook_speech_curiosity",
-    "hook_speech_starts_fast",
-]
-
-all_hand_crafted = METADATA_FEATURES + VISUAL_FEATURES + AUDIO_FEATURES + TEMPORAL_FEATURES + HOOK_FEATURES
+all_hand_crafted = METADATA_FEATURES + VISUAL_FEATURES + AUDIO_FEATURES
 hand_crafted = [f for f in all_hand_crafted if f in df.columns]
-n_hook_avail = sum(1 for f in HOOK_FEATURES if f in df.columns)
 print(f"\nHand-crafted features available: {len(hand_crafted)} / {len(all_hand_crafted)}")
-print(f"  of which hook features: {n_hook_avail}/{len(HOOK_FEATURES)}"
-      + ("" if n_hook_avail else "  <- run python run_hook_extraction.py"))
 missing_hc = [f for f in all_hand_crafted if f not in df.columns]
 if missing_hc:
-    non_hook_missing = [f for f in missing_hc if f not in HOOK_FEATURES]
-    if non_hook_missing:
-        print(f"Missing non-hook features: {non_hook_missing}")
-
+    print(f"Missing: {missing_hc}")
 
 # ── Prepare X and y ───────────────────────────────────────
 X_hc = df[hand_crafted + ["video_id"]].copy()
@@ -327,7 +237,7 @@ if has_embeddings:
     emb_merged = df[["video_id"]].merge(emb, on="video_id", how="left")
     emb_merged = emb_merged[mask]
 
-    # ── CLIP mean -> PCA 50 ────────────────────────────────
+    # ── CLIP mean → PCA 50 ────────────────────────────────
     clip_mean_cols = [c for c in emb.columns if c.startswith("clip_mean_")]
     if clip_mean_cols:
         vals           = emb_merged[clip_mean_cols].fillna(0).values
@@ -337,9 +247,9 @@ if has_embeddings:
             X_combined[f"clip_mean_pca_{i}"] = reduced[:, i]
         joblib.dump(pca,            f"models/pca_clip_mean_{NICHE}.pkl")
         joblib.dump(clip_mean_cols, f"models/clip_mean_cols_{NICHE}.pkl")
-        print(f"CLIP mean:    {len(clip_mean_cols)} -> {reduced.shape[1]} dims")
+        print(f"CLIP mean:    {len(clip_mean_cols)} → {reduced.shape[1]} dims")
 
-    # ── CLIP hook -> PCA 30 ────────────────────────────────
+    # ── CLIP hook → PCA 30 ────────────────────────────────
     clip_hook_cols = [c for c in emb.columns if c.startswith("clip_hook_")]
     if clip_hook_cols:
         vals           = emb_merged[clip_hook_cols].fillna(0).values
@@ -349,9 +259,9 @@ if has_embeddings:
             X_combined[f"clip_hook_pca_{i}"] = reduced[:, i]
         joblib.dump(pca,            f"models/pca_clip_hook_{NICHE}.pkl")
         joblib.dump(clip_hook_cols, f"models/clip_hook_cols_{NICHE}.pkl")
-        print(f"CLIP hook:    {len(clip_hook_cols)} -> {reduced.shape[1]} dims")
+        print(f"CLIP hook:    {len(clip_hook_cols)} → {reduced.shape[1]} dims")
 
-    # ── VGGish mean -> PCA 20 ─────────────────────────────
+    # ── VGGish mean → PCA 20 ─────────────────────────────
     vggish_mean_cols = [c for c in emb.columns if c.startswith("vggish_mean_")]
     if vggish_mean_cols:
         vals           = emb_merged[vggish_mean_cols].fillna(0).values
@@ -361,9 +271,9 @@ if has_embeddings:
             X_combined[f"vggish_mean_pca_{i}"] = reduced[:, i]
         joblib.dump(pca,              f"models/pca_vggish_mean_{NICHE}.pkl")
         joblib.dump(vggish_mean_cols, f"models/vggish_mean_cols_{NICHE}.pkl")
-        print(f"VGGish mean:  {len(vggish_mean_cols)} -> {reduced.shape[1]} dims")
+        print(f"VGGish mean:  {len(vggish_mean_cols)} → {reduced.shape[1]} dims")
 
-    # ── VGGish hook -> PCA 10 ─────────────────────────────
+    # ── VGGish hook → PCA 10 ─────────────────────────────
     vggish_hook_cols = [c for c in emb.columns if c.startswith("vggish_hook_")]
     if vggish_hook_cols:
         vals           = emb_merged[vggish_hook_cols].fillna(0).values
@@ -373,7 +283,7 @@ if has_embeddings:
             X_combined[f"vggish_hook_pca_{i}"] = reduced[:, i]
         joblib.dump(pca,              f"models/pca_vggish_hook_{NICHE}.pkl")
         joblib.dump(vggish_hook_cols, f"models/vggish_hook_cols_{NICHE}.pkl")
-        print(f"VGGish hook:  {len(vggish_hook_cols)} -> {reduced.shape[1]} dims")
+        print(f"VGGish hook:  {len(vggish_hook_cols)} → {reduced.shape[1]} dims")
 
     # ── DeepFace — no PCA, already low dimensional ────────
     deepface_cols = [c for c in emb.columns if c.startswith("df_") and c != "df_face_detected"]
@@ -392,7 +302,7 @@ if has_embeddings:
             X_combined[col] = t_vals[:, i]
         print(f"Temporal:     {len(temporal_cols)} features (no PCA)")
 
-    # ── Title MiniLM -> PCA 20 ────────────────────────────
+    # ── Title MiniLM → PCA 20 ────────────────────────────
     title_cols = [c for c in emb.columns if c.startswith("title_emb_")]
     if title_cols:
         vals           = emb_merged[title_cols].fillna(0).values
@@ -402,9 +312,9 @@ if has_embeddings:
             X_combined[f"title_pca_{i}"] = reduced[:, i]
         joblib.dump(pca,        f"models/pca_title_{NICHE}.pkl")
         joblib.dump(title_cols, f"models/title_cols_{NICHE}.pkl")
-        print(f"Title MiniLM: {len(title_cols)} -> {reduced.shape[1]} dims")
+        print(f"Title MiniLM: {len(title_cols)} → {reduced.shape[1]} dims")
 
-    # ── Transcript Whisper -> PCA 20 ──────────────────────
+    # ── Transcript Whisper → PCA 20 ──────────────────────
     transcript_cols = [c for c in emb.columns if c.startswith("transcript_emb_")]
     if transcript_cols:
         vals    = emb_merged[transcript_cols].fillna(0).values
@@ -414,7 +324,7 @@ if has_embeddings:
             X_combined[f"transcript_pca_{i}"] = reduced[:, i]
         joblib.dump(pca,             f"models/pca_transcript_{NICHE}.pkl")
         joblib.dump(transcript_cols, f"models/transcript_cols_{NICHE}.pkl")
-        print(f"Transcript:   {len(transcript_cols)} -> {reduced.shape[1]} dims")
+        print(f"Transcript:   {len(transcript_cols)} → {reduced.shape[1]} dims")
 
 print(f"\nTotal features going into model: {X_combined.shape[1]}")
 features = list(X_combined.columns)
@@ -457,8 +367,7 @@ if clip_pca_cols:
             cluster_df = df_with_clusters[df_with_clusters["cluster_id"] == c]
             print(f"\n  Cluster {c} ({len(cluster_df)} videos):")
             for title in cluster_df["title"].dropna().sample(min(5, len(cluster_df)), random_state=42):
-                safe_title = title[:80].encode('ascii', errors='replace').decode('ascii')
-                print(f"    - {safe_title}")
+                print(f"    - {title[:80]}")
 else:
     print("  No CLIP embeddings found — skipping clustering")
 

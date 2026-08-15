@@ -12,9 +12,6 @@ Usage:
 """
 
 import argparse
-import os
-os.environ.setdefault("KMP_DUPLICATE_LIB_OK", "TRUE")
-
 import warnings
 warnings.filterwarnings('ignore')
 
@@ -22,12 +19,11 @@ import cv2
 import numpy as np
 import joblib
 import torch
-import clip_compat as clip
+import clip
 from PIL import Image
 from pathlib import Path
 from sentence_transformers import SentenceTransformer
 import librosa
-from runtime_device import move_model_to_device, select_torch_device
 
 # ── Args ──────────────────────────────────────────────────
 parser = argparse.ArgumentParser()
@@ -50,44 +46,47 @@ NICHE      = args.niche
 MODELS_DIR = Path("models")
 
 # ── Device ────────────────────────────────────────────────
-device = select_torch_device(torch, prefer=os.getenv("YT_SHORTS_DEVICE", "cuda"))
+if torch.cuda.is_available():
+    device = "cuda"
+elif torch.backends.mps.is_available():
+    device = "mps"
+else:
+    device = "cpu"
+print(f"Device: {device}")
 
 # ── Channel stats (fetched before heavy model loading) ────
 from fetch_channel_stats import fetch_channel_stats as _fetch_channel_stats
 
 channel_subscriber_count  = 0
 channel_avg_views         = 0.0
-channel_avg_like_rate     = 0.0
-channel_avg_comment_rate  = 0.0
 
 if args.channel:
     print(f"Fetching channel stats for: {args.channel}")
     try:
         _ch = _fetch_channel_stats(args.channel)
-        channel_subscriber_count  = _ch["subscriber_count"]
-        channel_avg_views         = _ch["channel_avg_views"]
-        channel_avg_like_rate     = _ch.get("channel_avg_like_rate",    0.0)
-        channel_avg_comment_rate  = _ch.get("channel_avg_comment_rate", 0.0)
-        print(f"  Subscribers: {channel_subscriber_count:,} | Avg views: {channel_avg_views:,.0f} | Like rate: {channel_avg_like_rate:.4f}")
+        channel_subscriber_count = _ch["subscriber_count"]
+        channel_avg_views        = _ch["channel_avg_views"]
+        print(f"  Subscribers: {channel_subscriber_count:,} | Avg views: {channel_avg_views:,.0f}")
     except Exception as e:
-        print(f"  Warning: could not fetch channel stats -- {e}")
+        print(f"  Warning: could not fetch channel stats — {e}")
 
 # ── Load pretrained models ────────────────────────────────
 print("Loading models...")
 clip_model, clip_preprocess = clip.load("ViT-B/32", device=device)
-title_model = SentenceTransformer('all-MiniLM-L6-v2', device=device)
+title_model = SentenceTransformer('all-MiniLM-L6-v2')
 
 try:
     import torchvggish
     from torchvggish import vggish_input
-    _vggish_model = move_model_to_device(torchvggish.vggish(), device)
+    _vggish_model = torchvggish.vggish()
+    _vggish_model.eval()
     has_vggish = True
 except Exception:
     has_vggish = False
 
 try:
     import whisper as _whisper
-    _whisper_model = _whisper.load_model("tiny", device=device)
+    _whisper_model = _whisper.load_model("tiny", device="cpu")
     has_whisper = True
 except Exception:
     has_whisper = False
@@ -383,8 +382,8 @@ def extract_vggish_embeddings(video_path):
         if len(examples) == 0:
             return {}
         with torch.no_grad():
-            inp        = torch.tensor(examples).float().to(device)
-            embeddings = _vggish_model(inp).detach().cpu().numpy()
+            inp        = torch.tensor(examples).float()
+            embeddings = _vggish_model(inp).numpy()
         hook_emb = embeddings[:min(3, len(embeddings))].mean(axis=0)
         mean_emb = embeddings.mean(axis=0)
         result = {}
@@ -536,20 +535,6 @@ emotion = extract_emotion_features(video_path)
 print("  Temporal motion...")
 temporal = extract_temporal_motion(video_path)
 
-print("  Hook features (text overlay + audio type + speech)...")
-try:
-    from extract_hook_features import extract_all_hook_features
-    _wm = _whisper_model if has_whisper else None
-    hook_feats = extract_all_hook_features(
-        str(video_path),
-        whisper_model=_wm,
-        run_ocr=True,
-        run_whisper=has_whisper,
-    )
-except Exception as _e:
-    print(f"    Hook features skipped: {_e}")
-    hook_feats = {}
-
 print("  Title embedding...")
 title_emb = title_model.encode(args.title, normalize_embeddings=True) if args.title else np.zeros(384)
 
@@ -572,7 +557,6 @@ feature_dict.update(visual)
 feature_dict.update(audio)
 feature_dict.update(emotion)
 feature_dict.update(temporal)
-feature_dict.update(hook_feats)   # text overlay + audio hook + whisper hook
 
 for i, v in enumerate(title_emb):
     feature_dict[f"title_emb_{i}"] = float(v)
@@ -592,12 +576,11 @@ feature_dict.update(vggish)
 
 # Only add channel features if a channel was actually provided.
 # If missing, _predict_infer.py falls back to training-set medians
+# (log1p_subscriber_count ≈ 12.1, log1p_channel_avg_views ≈ 11.4)
 # so the score stays calibrated rather than defaulting to 99th percentile.
 if args.channel and channel_subscriber_count > 0:
     feature_dict["log1p_subscriber_count"]  = float(np.log1p(channel_subscriber_count))
     feature_dict["log1p_channel_avg_views"] = float(np.log1p(channel_avg_views))
-    feature_dict["log1p_chan_like_rate"]     = float(np.log1p(channel_avg_like_rate))
-    feature_dict["log1p_chan_comment_rate"]  = float(np.log1p(channel_avg_comment_rate))
 
 print("  Trending audio match...")
 if has_trending_db:

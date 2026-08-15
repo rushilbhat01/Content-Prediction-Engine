@@ -1,14 +1,11 @@
 """
-fetch_channel_stats.py — Fetch subscriber_count, channel_avg_views,
-channel_avg_like_rate and channel_avg_comment_rate for a YouTube channel
-using yt-dlp (no API key needed).
+fetch_channel_stats.py — Fetch subscriber_count and channel_avg_views
+for a YouTube channel using yt-dlp (no API key needed).
 
 Returns:
     {
-        "subscriber_count":       int,
-        "channel_avg_views":      float,   # median of last 25 videos
-        "channel_avg_like_rate":  float,   # median(likes/views) across last 25
-        "channel_avg_comment_rate": float, # median(comments/views) across last 25
+        "subscriber_count":   int,
+        "channel_avg_views":  float,   # median of last 25 videos
     }
 
 Usage:
@@ -94,27 +91,9 @@ def fetch_channel_stats(channel_input: str, last_n: int = 25) -> dict:
     else:
         avg_views = 0.0
 
-    # ── Engagement rates (like/view, comment/view per video) ─
-    like_rates    = []
-    comment_rates = []
-    for entry in entries:
-        if not entry:
-            continue
-        vc = entry.get("view_count") or 0
-        lc = entry.get("like_count") or 0
-        cc = entry.get("comment_count") or 0
-        if vc > 0:
-            like_rates.append(lc / vc)
-            comment_rates.append(cc / vc)
-
-    avg_like_rate    = float(np.median(like_rates))    if like_rates    else 0.0
-    avg_comment_rate = float(np.median(comment_rates)) if comment_rates else 0.0
-
     return {
-        "subscriber_count":         sub_count,
-        "channel_avg_views":        avg_views,
-        "channel_avg_like_rate":    avg_like_rate,
-        "channel_avg_comment_rate": avg_comment_rate,
+        "subscriber_count":  sub_count,
+        "channel_avg_views": avg_views,
     }
 
 
@@ -125,7 +104,5 @@ if __name__ == "__main__":
         print("Usage: python fetch_channel_stats.py @ChannelHandle")
         sys.exit(1)
     stats = fetch_channel_stats(sys.argv[1])
-    print(f"Subscriber count:      {stats['subscriber_count']:,}")
-    print(f"Channel avg views:     {stats['channel_avg_views']:,.0f}")
-    print(f"Avg like rate:         {stats['channel_avg_like_rate']:.4f}")
-    print(f"Avg comment rate:      {stats['channel_avg_comment_rate']:.4f}")
+    print(f"Subscriber count:  {stats['subscriber_count']:,}")
+    print(f"Channel avg views: {stats['channel_avg_views']:,.0f}")

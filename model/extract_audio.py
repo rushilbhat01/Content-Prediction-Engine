@@ -111,23 +111,9 @@ def load_existing():
 
 
 # ── Main ──────────────────────────────────────────────────
-if __name__ == "__main__":
-    import argparse
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--video-list", default=None,
-                        help="Path to a text file containing video paths to process")
-    parser.add_argument("--append", action="store_true", default=False,
-                        help="Append features to the output file")
-    args = parser.parse_args()
-
-    existing = load_existing()
-    if args.video_list:
-        with open(args.video_list, "r", encoding="utf-8") as f:
-            video_files = [Path(line.strip()) for line in f if line.strip()]
-        to_process = [v for v in video_files if v.stem not in existing]
-    else:
-        video_files = list(RAW_DIR.glob("*.mp4"))
-        to_process  = [v for v in video_files if v.stem not in existing]
+video_files = list(RAW_DIR.glob("*.mp4"))
+existing    = load_existing()
+to_process  = [v for v in video_files if v.stem not in existing]
 
 print(f"Total videos:   {len(video_files)}")
 print(f"Already done:   {len(existing)}")

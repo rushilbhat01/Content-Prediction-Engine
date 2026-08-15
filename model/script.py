@@ -3,7 +3,6 @@ import csv
 import time
 import random
 import argparse
-import subprocess
 import pandas as pd
 from pathlib import Path
 from datetime import datetime, timezone
@@ -44,21 +43,22 @@ if args.download_missing:
             success += 1
             continue
         url = f"https://www.youtube.com/watch?v={vid_id}"
-        print(f"[{i}/{len(to_download)}] Downloading {vid_id}...", end=' ', flush=True)
-        result = subprocess.run([
-            "yt-dlp",
-            "-o", "data/raw_videos/%(id)s.%(ext)s",
-            "--merge-output-format", "mp4",
-            "--quiet", "--no-warnings",
-            url
-        ], capture_output=True)
-        if result.returncode == 0 and out_path.exists():
+        print(f"[{i}/{len(to_download)}] Downloading {vid_id}...")
+        exit_code = os.system(
+            f'yt-dlp -o "data/raw_videos/%(id)s.%(ext)s" '
+            f'--js-runtimes node '
+            f'--merge-output-format mp4 '
+            f'--cookies-from-browser brave '
+            f'--quiet --no-warnings '
+            f'"{url}"'
+        )
+        if exit_code == 0:
             success += 1
-            print("OK")
+            print(f"  Done")
         else:
             failed += 1
-            print("failed")
-        time.sleep(random.uniform(2, 4))
+            print(f"  Failed")
+        time.sleep(random.uniform(3, 6))
 
     print(f"\nDone! Downloaded: {success}  Failed: {failed}")
     exit()
@@ -545,18 +545,18 @@ for i, row in enumerate(rows, 1):
     url = f"https://www.youtube.com/watch?v={vid_id}"
     print(f"[{i}/{len(rows)}] Downloading {vid_id} ({row['views']:,} views)...")
 
-    result = subprocess.run([
-        "yt-dlp",
-        "-o", "data/raw_videos/%(id)s.%(ext)s",
-        "-f", "bestvideo[ext=mp4]+bestaudio[ext=m4a]/bestvideo+bestaudio/best",
-        "--merge-output-format", "mp4",
-        "--quiet", "--no-warnings",
-        url
-    ], capture_output=True)
+    exit_code = os.system(
+        f'yt-dlp -o "data/raw_videos/%(id)s.%(ext)s" '
+        f'-f "bestvideo[ext=mp4]+bestaudio[ext=m4a]/bestvideo+bestaudio/best" '
+        f'--merge-output-format mp4 '
+        f'--cookies-from-browser brave '
+        f'--quiet --no-warnings '
+        f'"{url}"'
+    )
 
-    if result.returncode == 0:
+    if exit_code == 0:
         success += 1
-        print(f"  OK")
+        print(f"  Done")
     else:
         failed += 1
         print(f"  Failed")
